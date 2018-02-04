@@ -1,0 +1,107 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+```{r}
+library(tidyverse)
+library(magrittr)
+# library(ggplot2)
+library(purrr)
+library(jsonlite)
+library(geohash)
+```
+Reading in data
+```{r}
+# vehicle_data<-read.csv("C:/Users/Caroline Wang/Documents/Datathon Materials/Datathon Materials/vehicle_activity.csv")
+vehicle_data_copy<- #slice(vehicle_data,1:1000)
+                   vehicle_data
+vehicle_data_copy$circling_distribution<-as.character(vehicle_data_copy$circling_distribution)
+vehicle_data_copy$geohash=as.character(vehicle_data_copy$geohash)
+vehicle_data_copy$metro=as.character(vehicle_data_copy$metro)
+
+vehicle_data_copy<-vehicle_data_copy%>%
+                      filter(circling_distribution!="")%>%
+                      bind_cols(gh_decode(.$geohash))%>%
+                      tibble::rowid_to_column(., "ID")
+
+
+```
+
+ View(distinct(vehicle_data,metro))
+metro
+1
+Los Angeles-Long Beach-Anaheim, CA
+2
+Toronto-York-Peel-Halton, ON
+3
+Houston-The Woodlands-Sugar Land, TX
+4
+Atlanta-Sandy Springs-Roswell, GA
+5
+Denver-Aurora-Lakewood, CO
+6
+Durham-Chapel Hill, NC
+
+**FUNCTIONS**
+```{r}
+json_to_df<-function(row){
+   pb$tick()$print()
+ 
+  # testrow<<-row
+  raw_str<-row$circling_distribution
+  df<-raw_str%>%
+        fromJSON()%>%
+        as_data_frame()%>%
+        t()%>%
+        data.frame(circ_geohash= row.names(.), circ_percent_time=., row.names=NULL) 
+  df$circ_geohash=as.character(df$circ_geohash)
+  df<-df%>%
+        bind_cols(gh_decode(.$circ_geohash))%>%
+        mutate(ID=row$ID,area_geohash=row$geohash,area_lat=row$lat,area_lng=row$lng,metro=row$metro,total_searching=row$total_searching)
+}
+
+
+```
+
+Convert geohash to lat long
+```{r}
+
+
+circling_df<-vehicle_data_copy%>%
+                select(ID,circling_distribution,geohash,metro,total_searching,lat,lng)
+                # slice(1:100)
+
+df_as_list<-circling_df%>%
+              split(seq(nrow(.)))%>%
+              lapply(as.vector)
+
+pb <- progress_estimated(length(circling_df$ID))
+
+testmap<-df_as_list%>%
+            map_dfr(.,~json_to_df(.x))%>%
+            mutate(circ_minutes=total_searching*circ_percent_time)%>%
+            group_by(circ_geohash)%>%
+              summarize(total_min_circ=sum(circ_minutes),
+                        lat=lat[1],
+                        lng=lng[1]
+                        )
+#total min circ records the total minutes spent circulating in circ_geohash
+
+  
+
+```
+
+```{r}
+write.csv(testmap,"wasted.csv")
+
+```
+
+
